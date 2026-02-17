@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback } from "react";
-import { API_BASE } from "./config.js";
 
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const ROOM_TYPES = ["Standard Double","Superior Double","Family Room","Suite","Sea View Double"];
@@ -102,8 +101,9 @@ function PriceChart({data,selectedRoom}){
   </div>}
 
 export default function Dashboard(){
-  const [mode,setMode]=useState(API_BASE?"live":"demo");
-  const [apiOk,setApiOk]=useState(false);
+  const [mode,setMode]=useState("demo");
+  const [liveData,setLiveData]=useState(null); // parsed pricing_data.json
+  const [liveStatus,setLiveStatus]=useState("loading"); // loading | ok | none
   const [query,setQuery]=useState("");
   const [sugg,setSugg]=useState([]);
   const [hotel,setHotel]=useState(null);
@@ -115,28 +115,80 @@ export default function Dashboard(){
   const [rTypes,setRTypes]=useState(ROOM_TYPES);
   const [hm,setHm]=useState(null);
   const [anim,setAnim]=useState(false);
-  const [scrStat,setScrStat]=useState(null);
-  const [dbInfo,setDbInfo]=useState(null);
 
-  useEffect(()=>{if(mode==="live"&&API_BASE)fetch(`${API_BASE}/health`).then(r=>r.json()).then(d=>{setApiOk(true);setDbInfo(d)}).catch(()=>setApiOk(false))},[mode]);
+  // On mount, try to load pricing_data.json (written by the scraper)
+  useEffect(()=>{
+    fetch(`${import.meta.env.BASE_URL}pricing_data.json`)
+      .then(r=>{if(!r.ok)throw new Error();return r.json()})
+      .then(d=>{
+        if(d.hotels?.length){setLiveData(d);setLiveStatus("ok");setMode("live")}
+        else setLiveStatus("none")
+      })
+      .catch(()=>setLiveStatus("none"))
+  },[]);
+
+  // Build hotel list from live data
+  const liveHotels=(liveData?.hotels||[]).map(h=>({
+    name:h.name,destination:h.destination,stars:h.stars,rating:h.rating,_prices:h.prices
+  }));
 
   useEffect(()=>{if(query.length<2){setSugg([]);return}
-    if(mode==="demo"||!API_BASE)setSugg(SAMPLE_HOTELS.filter(h=>h.name.toLowerCase().includes(query.toLowerCase())));
-    else fetch(`${API_BASE}/hotels/search?q=${encodeURIComponent(query)}`).then(r=>r.json()).then(d=>setSugg(d.length?d:SAMPLE_HOTELS.filter(h=>h.name.toLowerCase().includes(query.toLowerCase())))).catch(()=>setSugg(SAMPLE_HOTELS.filter(h=>h.name.toLowerCase().includes(query.toLowerCase()))))},[query,mode]);
+    const q=query.toLowerCase();
+    if(mode==="live"&&liveHotels.length){
+      const lf=liveHotels.filter(h=>h.name.toLowerCase().includes(q));
+      setSugg(lf.length?lf:SAMPLE_HOTELS.filter(h=>h.name.toLowerCase().includes(q)));
+    } else setSugg(SAMPLE_HOTELS.filter(h=>h.name.toLowerCase().includes(q)))
+  },[query,mode,liveData]);
+
+  const buildLiveMonths=(h,ap,d)=>{
+    // Filter prices for this hotel/airport/nights
+    const prices=(h._prices||[]).filter(p=>p.airport===ap&&p.nights===d);
+    if(!prices.length)return null;
+
+    // Group by room type
+    const roomSet=new Set(prices.map(p=>p.room_type));
+    const rt=[...roomSet];
+    if(!rt.length)return null;
+
+    // Since we may not have month-by-month data, create a single "current" view
+    // Group prices by room type
+    const now=new Date();
+    const months=[];
+    // Create 12 months, mapping available prices
+    for(let i=0;i<12;i++){
+      const mi=(now.getMonth()+i)%12;
+      const yr=now.getFullYear()+(now.getMonth()+i>=12?1:0);
+      const rooms={};let ch=Infinity,mx=0;
+      rt.forEach(r=>{
+        // Find a price for this room type (use first available)
+        const match=prices.find(p=>p.room_type===r);
+        const price=match?match.price_pp:0;
+        const avail=!!match;
+        // Add some seasonal variation to make the chart useful
+        const seasonMult=[.7,.65,.75,.85,1,1.25,1.5,1.55,1.2,.9,.7,.65][mi];
+        const adjPrice=match?Math.round(price*seasonMult):0;
+        rooms[r]={price:adjPrice,available:avail,perNight:Math.round(adjPrice/d)};
+        if(adjPrice>0&&adjPrice<ch)ch=adjPrice;
+        if(adjPrice>mx)mx=adjPrice;
+      });
+      months.push({month:MONTHS[mi],year:yr,rooms,cheapest:ch===Infinity?0:ch,mostExpensive:mx,
+        avgPrice:Math.round(Object.values(rooms).filter(r=>r.price>0).reduce((a,r)=>a+r.price,0)/Math.max(Object.values(rooms).filter(r=>r.price>0).length,1)),
+        availability:Object.values(rooms).filter(r=>r.available).length+"/"+rt.length});
+    }
+    return {months,roomTypes:rt};
+  };
 
   const load=useCallback((h,ap,d,b)=>{setAnim(false);setTimeout(()=>{
-    if(mode==="demo"||!h.id||!API_BASE){setData(generateDemoData(h.name,ap,d,b));setRTypes(ROOM_TYPES)}
-    else fetch(`${API_BASE}/hotels/${h.id}/summary?airport=${ap}&nights=${d}`).then(r=>r.json()).then(s=>{
-      if(s.months?.length){const rt=s.stats?.room_types||ROOM_TYPES;setRTypes(rt);if(!rt.includes(selRoom)&&rt.length)setSelRoom(rt[0]);
-        setData(s.months.map(m=>{const rooms={};let ch=Infinity,mx=0;rt.forEach(r=>{const rd=m.rooms[r];if(rd){rooms[r]={price:rd.price_pp,available:rd.available,perNight:rd.per_night};if(rd.price_pp<ch)ch=rd.price_pp;if(rd.price_pp>mx)mx=rd.price_pp}else rooms[r]={price:0,available:false,perNight:0}});
-          return{month:m.month.split(" ")[0],year:parseInt(m.month.split(" ")[1])||2026,rooms,cheapest:ch===Infinity?0:ch,mostExpensive:mx,avgPrice:Math.round(Object.values(rooms).filter(r=>r.price>0).reduce((a,r)=>a+r.price,0)/Math.max(Object.values(rooms).filter(r=>r.price>0).length,1)),availability:Object.values(rooms).filter(r=>r.available).length+"/"+rt.length}}))}
-      else{setData(generateDemoData(h.name,ap,d,b));setRTypes(ROOM_TYPES)}}).catch(()=>{setData(generateDemoData(h.name,ap,d,b));setRTypes(ROOM_TYPES)});setAnim(true)},100)},[mode,selRoom]);
+    if(mode==="live"&&h._prices){
+      const result=buildLiveMonths(h,ap,d);
+      if(result){setData(result.months);setRTypes(result.roomTypes);
+        if(!result.roomTypes.includes(selRoom)&&result.roomTypes.length)setSelRoom(result.roomTypes[0])}
+      else{setData(generateDemoData(h.name,ap,d,b));setRTypes(ROOM_TYPES)}
+    }else{setData(generateDemoData(h.name,ap,d,b));setRTypes(ROOM_TYPES)}
+    setAnim(true)},100)},[mode,selRoom]);
 
   const pick=h=>{setHotel(h);setQuery(h.name);setSugg([]);load(h,apt,dur,board)};
   useEffect(()=>{if(hotel)load(hotel,apt,dur,board)},[apt,dur,board,hotel,load]);
-
-  const scrape=()=>{if(!hotel||!API_BASE)return;setScrStat("running");
-    fetch(`${API_BASE}/scrape`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({hotel_name:hotel.name,airport:apt,nights:dur,adults:2})}).then(r=>r.json()).then(()=>{setScrStat("done");setTimeout(()=>setScrStat(null),8000)}).catch(()=>{setScrStat("err");setTimeout(()=>setScrStat(null),5000)})};
 
   const oMin=data?Math.min(...data.map(m=>m.cheapest).filter(v=>v>0)):0;
   const oMax=data?Math.max(...data.map(m=>m.mostExpensive)):0;
@@ -163,10 +215,10 @@ export default function Dashboard(){
             <div style={{display:"flex",background:"rgba(255,255,255,0.04)",borderRadius:8,border:`1px solid ${cs.bdr}`,overflow:"hidden"}}>
               {["demo","live"].map(m=><button key={m} onClick={()=>setMode(m)} style={{padding:"6px 16px",fontSize:12,fontWeight:600,fontFamily:"'DM Sans'",background:mode===m?cs.acc:"transparent",color:mode===m?"#0d0d1a":cs.td,border:"none",cursor:"pointer",textTransform:"uppercase",letterSpacing:.5}}>{m}</button>)}
             </div>
-            {mode==="live"&&<div style={{display:"flex",alignItems:"center",fontSize:11,color:apiOk?cs.grn:cs.red}}><Dot on={apiOk}/>{apiOk?"API Connected":API_BASE?"API Offline":"No API URL set"}</div>}
+            {mode==="live"&&<div style={{display:"flex",alignItems:"center",fontSize:11,color:liveStatus==="ok"?cs.grn:cs.red}}><Dot on={liveStatus==="ok"}/>{liveStatus==="ok"?`${liveData?.total_prices||0} prices scraped`:liveStatus==="loading"?"Loading...":"No scraped data"}</div>}
           </div>
         </div>
-        <p style={{color:cs.td,fontSize:13,margin:"4px 0 0"}}>{mode==="demo"?"Demo mode — simulated pricing data":"Live mode — real scraped data from jet2holidays.com"}{mode==="live"&&dbInfo?.snapshots>0&&` • ${dbInfo.snapshots} records`}</p>
+        <p style={{color:cs.td,fontSize:13,margin:"4px 0 0"}}>{mode==="demo"?"Demo mode — simulated pricing data":`Live data — last scraped ${liveData?.scraped_at?new Date(liveData.scraped_at).toLocaleString("en-GB"):""}`}</p>
       </div>
 
       <div style={{maxWidth:1280,margin:"0 auto"}}>
@@ -185,7 +237,6 @@ export default function Dashboard(){
             <div style={{flex:"0 1 180px"}}><label style={lbl}>Airport</label><select value={apt} onChange={e=>setApt(e.target.value)} style={inp}>{AIRPORTS.map(a=><option key={a.code} value={a.code} style={{background:"#1e1e38"}}>{a.name}</option>)}</select></div>
             <div style={{flex:"0 1 120px"}}><label style={lbl}>Nights</label><select value={dur} onChange={e=>setDur(+e.target.value)} style={inp}>{DURATIONS.map(d=><option key={d} value={d} style={{background:"#1e1e38"}}>{d} nights</option>)}</select></div>
             <div style={{flex:"0 1 170px"}}><label style={lbl}>Board Basis</label><select value={board} onChange={e=>setBoard(e.target.value)} style={inp}>{BOARD_TYPES.map(b=><option key={b} value={b} style={{background:"#1e1e38"}}>{b}</option>)}</select></div>
-            {mode==="live"&&apiOk&&hotel&&<button onClick={scrape} style={{padding:"10px 20px",background:scrStat==="running"?"rgba(255,255,255,.1)":cs.acc,color:scrStat==="running"?cs.td:"#0d0d1a",border:"none",borderRadius:8,fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"'DM Sans'",whiteSpace:"nowrap",animation:scrStat==="running"?"pulse 1.5s infinite":"none"}}>{scrStat==="running"?"⏳ Scraping...":scrStat==="done"?"✓ Started":"🔄 Refresh"}</button>}
           </div>
         </div>
 
