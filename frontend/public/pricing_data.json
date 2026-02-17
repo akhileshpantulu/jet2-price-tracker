@@ -1,5 +1,534 @@
 {
-  "hotels": [],
-  "scraped_at": "2026-02-17T18:16:01.248199",
-  "total_prices": 0
+  "hotels": [
+    {
+      "name": "Sunwing Alcudia Beach",
+      "destination": "Majorca, Spain",
+      "stars": 4,
+      "rating": 4.3,
+      "prices": [
+        {
+          "airport": "MAN",
+          "nights": 7,
+          "departure_date": "",
+          "room_type": "Studio",
+          "board_basis": "All Inclusive",
+          "price_pp": 100.0,
+          "available": true
+        },
+        {
+          "airport": "MAN",
+          "nights": 7,
+          "departure_date": "",
+          "room_type": "Sea View",
+          "board_basis": "All Inclusive",
+          "price_pp": 100.0,
+          "available": true
+        },
+        {
+          "airport": "MAN",
+          "nights": 7,
+          "departure_date": "",
+          "room_type": "Suite",
+          "board_basis": "All Inclusive",
+          "price_pp": 100.0,
+          "available": true
+        },
+        {
+          "airport": "MAN",
+          "nights": 7,
+          "departure_date": "",
+          "room_type": "Studio",
+          "board_basis": "All Inclusive",
+          "price_pp": 100.0,
+          "available": true
+        },
+        {
+          "airport": "MAN",
+          "nights": 7,
+          "departure_date": "",
+          "room_type": "Sea View",
+          "board_basis": "All Inclusive",
+          "price_pp": 100.0,
+          "available": true
+        },
+        {
+          "airport": "MAN",
+          "nights": 7,
+          "departure_date": "",
+          "room_type": "Suite",
+          "board_basis": "All Inclusive",
+          "price_pp": 100.0,
+          "available": true
+        },
+        {
+          "airport": "MAN",
+          "nights": 7,
+          "departure_date": "",
+          "room_type": "Studio",
+          "board_basis": "All Inclusive",
+          "price_pp": 100.0,
+          "available": true
+        },
+        {
+          "airport": "MAN",
+          "nights": 7,
+          "departure_date": "",
+          "room_type": "Sea View",
+          "board_basis": "All Inclusive",
+          "price_pp": 100.0,
+          "available": true
+        },
+        {
+          "airport": "LBA",
+          "nights": 7,
+          "departure_date": "",
+          "room_type": "Studio",
+          "board_basis": "All Inclusive",
+          "price_pp": 100.0,
+          "available": true
+        },
+        {
+          "airport": "LBA",
+          "nights": 7,
+          "departure_date": "",
+          "room_type": "Sea View",
+          "board_basis": "All Inclusive",
+          "price_pp": 100.0,
+          "available": true
+        },
+        {
+          "airport": "LBA",
+          "nights": 7,
+          "departure_date": "",
+          "room_type": "Suite",
+          "board_basis": "All Inclusive",
+          "price_pp": 100.0,
+          "available": true
+        },
+        {
+          "airport": "LBA",
+          "nights": 7,
+          "departure_date": "",
+          "room_type": "Studio",
+          "board_basis": "All Inclusive",
+          "price_pp": 100.0,
+          "available": true
+        },
+        {
+          "airport": "LBA",
+          "nights": 7,
+          "departure_date": "",
+          "room_type": "Sea View",
+          "board_basis": "All Inclusive",
+          "price_pp": 100.0,
+          "available": true
+        },
+        {
+          "airport": "LBA",
+          "nights": 7,
+          "departure_date": "",
+          "room_type": "Suite",
+          "board_basis": "All Inclusive",
+          "price_pp": 100.0,
+          "available": true
+        },
+        {
+          "airport": "LBA",
+          "nights": 7,
+          "departure_date": "",
+          "room_type": "Studio",
+          "board_basis": "All Inclusive",
+          "price_pp": 100.0,
+          "available": true
+        },
+        {
+          "airport": "LBA",
+          "nights": 7,
+          "departure_date": "",
+          "room_type": "Sea View",
+          "board_basis": "All Inclusive",
+          "price_pp": 100.0,
+          "available": true
+        }
+      ]
+    },
+    {
+      "name": "Hotel Flamingo Oasis",
+      "destination": "Benidorm, Spain",
+      "stars": 4,
+      "rating": 4.1,
+      "prices": [
+        {
+          "airport": "MAN",
+          "nights": 7,
+          "departure_date": "",
+          "room_type": "Premium",
+          "board_basis": "All Inclusive",
+          "price_pp": 100.0,
+          "available": true
+        },
+        {
+          "airport": "MAN",
+          "nights": 7,
+          "departure_date": "",
+          "room_type": "Sea View",
+          "board_basis": "All Inclusive",
+          "price_pp": 100.0,
+          "available": true
+        },
+        {
+          "airport": "MAN",
+          "nights": 7,
+          "departure_date": "",
+          "room_type": "Junior Suite",
+          "board_basis": "All Inclusive",
+          "price_pp": 100.0,
+          "available": true
+        },
+        {
+          "airport": "MAN",
+          "nights": 7,
+          "departure_date": "",
+          "room_type": "Suite",
+          "board_basis": "All Inclusive",
+          "price_pp": 100.0,
+          "available": true
+        },
+        {
+          "airport": "MAN",
+          "nights": 7,
+          "departure_date": "",
+          "room_type": "Classic",
+          "board_basis": "All Inclusive",
+          "price_pp": 100.0,
+          "available": true
+        },
+        {
+          "airport": "MAN",
+          "nights": 7,
+          "departure_date": "",
+          "room_type": "Premium",
+          "board_basis": "All Inclusive",
+          "price_pp": 100.0,
+          "available": true
+        },
+        {
+          "airport": "MAN",
+          "nights": 7,
+          "departure_date": "",
+          "room_type": "Suite",
+          "board_basis": "All Inclusive",
+          "price_pp": 100.0,
+          "available": true
+        },
+        {
+          "airport": "MAN",
+          "nights": 7,
+          "departure_date": "",
+          "room_type": "Classic",
+          "board_basis": "All Inclusive",
+          "price_pp": 100.0,
+          "available": true
+        }
+      ]
+    },
+    {
+      "name": "Zafiro Palace Alcudia",
+      "destination": "Majorca, Spain",
+      "stars": 5,
+      "rating": 4.7,
+      "prices": [
+        {
+          "airport": "MAN",
+          "nights": 7,
+          "departure_date": "",
+          "room_type": "Standard",
+          "board_basis": "All Inclusive",
+          "price_pp": 100.0,
+          "available": true
+        },
+        {
+          "airport": "MAN",
+          "nights": 7,
+          "departure_date": "",
+          "room_type": "Junior Suite",
+          "board_basis": "All Inclusive",
+          "price_pp": 100.0,
+          "available": true
+        },
+        {
+          "airport": "MAN",
+          "nights": 7,
+          "departure_date": "",
+          "room_type": "Junior Suite",
+          "board_basis": "All Inclusive",
+          "price_pp": 100.0,
+          "available": true
+        },
+        {
+          "airport": "MAN",
+          "nights": 7,
+          "departure_date": "",
+          "room_type": "Sea View",
+          "board_basis": "All Inclusive",
+          "price_pp": 100.0,
+          "available": true
+        },
+        {
+          "airport": "MAN",
+          "nights": 7,
+          "departure_date": "",
+          "room_type": "Suite",
+          "board_basis": "All Inclusive",
+          "price_pp": 100.0,
+          "available": true
+        },
+        {
+          "airport": "MAN",
+          "nights": 7,
+          "departure_date": "",
+          "room_type": "Standard",
+          "board_basis": "All Inclusive",
+          "price_pp": 100.0,
+          "available": true
+        },
+        {
+          "airport": "MAN",
+          "nights": 7,
+          "departure_date": "",
+          "room_type": "Junior Suite",
+          "board_basis": "All Inclusive",
+          "price_pp": 100.0,
+          "available": true
+        },
+        {
+          "airport": "MAN",
+          "nights": 7,
+          "departure_date": "",
+          "room_type": "Sea View",
+          "board_basis": "All Inclusive",
+          "price_pp": 100.0,
+          "available": true
+        },
+        {
+          "airport": "MAN",
+          "nights": 10,
+          "departure_date": "",
+          "room_type": "Standard",
+          "board_basis": "All Inclusive",
+          "price_pp": 100.0,
+          "available": true
+        },
+        {
+          "airport": "MAN",
+          "nights": 10,
+          "departure_date": "",
+          "room_type": "Junior Suite",
+          "board_basis": "All Inclusive",
+          "price_pp": 100.0,
+          "available": true
+        },
+        {
+          "airport": "MAN",
+          "nights": 10,
+          "departure_date": "",
+          "room_type": "Junior Suite",
+          "board_basis": "All Inclusive",
+          "price_pp": 100.0,
+          "available": true
+        },
+        {
+          "airport": "MAN",
+          "nights": 10,
+          "departure_date": "",
+          "room_type": "Sea View",
+          "board_basis": "All Inclusive",
+          "price_pp": 100.0,
+          "available": true
+        },
+        {
+          "airport": "MAN",
+          "nights": 10,
+          "departure_date": "",
+          "room_type": "Suite",
+          "board_basis": "All Inclusive",
+          "price_pp": 100.0,
+          "available": true
+        },
+        {
+          "airport": "MAN",
+          "nights": 10,
+          "departure_date": "",
+          "room_type": "Standard",
+          "board_basis": "All Inclusive",
+          "price_pp": 100.0,
+          "available": true
+        },
+        {
+          "airport": "MAN",
+          "nights": 10,
+          "departure_date": "",
+          "room_type": "Junior Suite",
+          "board_basis": "All Inclusive",
+          "price_pp": 100.0,
+          "available": true
+        },
+        {
+          "airport": "MAN",
+          "nights": 10,
+          "departure_date": "",
+          "room_type": "Sea View",
+          "board_basis": "All Inclusive",
+          "price_pp": 100.0,
+          "available": true
+        },
+        {
+          "airport": "LBA",
+          "nights": 7,
+          "departure_date": "",
+          "room_type": "Standard",
+          "board_basis": "All Inclusive",
+          "price_pp": 100.0,
+          "available": true
+        },
+        {
+          "airport": "LBA",
+          "nights": 7,
+          "departure_date": "",
+          "room_type": "Junior Suite",
+          "board_basis": "All Inclusive",
+          "price_pp": 100.0,
+          "available": true
+        },
+        {
+          "airport": "LBA",
+          "nights": 7,
+          "departure_date": "",
+          "room_type": "Junior Suite",
+          "board_basis": "All Inclusive",
+          "price_pp": 100.0,
+          "available": true
+        },
+        {
+          "airport": "LBA",
+          "nights": 7,
+          "departure_date": "",
+          "room_type": "Sea View",
+          "board_basis": "All Inclusive",
+          "price_pp": 100.0,
+          "available": true
+        },
+        {
+          "airport": "LBA",
+          "nights": 7,
+          "departure_date": "",
+          "room_type": "Suite",
+          "board_basis": "All Inclusive",
+          "price_pp": 100.0,
+          "available": true
+        },
+        {
+          "airport": "LBA",
+          "nights": 7,
+          "departure_date": "",
+          "room_type": "Standard",
+          "board_basis": "All Inclusive",
+          "price_pp": 100.0,
+          "available": true
+        },
+        {
+          "airport": "LBA",
+          "nights": 7,
+          "departure_date": "",
+          "room_type": "Junior Suite",
+          "board_basis": "All Inclusive",
+          "price_pp": 100.0,
+          "available": true
+        },
+        {
+          "airport": "LBA",
+          "nights": 7,
+          "departure_date": "",
+          "room_type": "Sea View",
+          "board_basis": "All Inclusive",
+          "price_pp": 100.0,
+          "available": true
+        },
+        {
+          "airport": "LBA",
+          "nights": 10,
+          "departure_date": "",
+          "room_type": "Standard",
+          "board_basis": "All Inclusive",
+          "price_pp": 100.0,
+          "available": true
+        },
+        {
+          "airport": "LBA",
+          "nights": 10,
+          "departure_date": "",
+          "room_type": "Junior Suite",
+          "board_basis": "All Inclusive",
+          "price_pp": 100.0,
+          "available": true
+        },
+        {
+          "airport": "LBA",
+          "nights": 10,
+          "departure_date": "",
+          "room_type": "Junior Suite",
+          "board_basis": "All Inclusive",
+          "price_pp": 100.0,
+          "available": true
+        },
+        {
+          "airport": "LBA",
+          "nights": 10,
+          "departure_date": "",
+          "room_type": "Sea View",
+          "board_basis": "All Inclusive",
+          "price_pp": 100.0,
+          "available": true
+        },
+        {
+          "airport": "LBA",
+          "nights": 10,
+          "departure_date": "",
+          "room_type": "Suite",
+          "board_basis": "All Inclusive",
+          "price_pp": 100.0,
+          "available": true
+        },
+        {
+          "airport": "LBA",
+          "nights": 10,
+          "departure_date": "",
+          "room_type": "Standard",
+          "board_basis": "All Inclusive",
+          "price_pp": 100.0,
+          "available": true
+        },
+        {
+          "airport": "LBA",
+          "nights": 10,
+          "departure_date": "",
+          "room_type": "Junior Suite",
+          "board_basis": "All Inclusive",
+          "price_pp": 100.0,
+          "available": true
+        },
+        {
+          "airport": "LBA",
+          "nights": 10,
+          "departure_date": "",
+          "room_type": "Sea View",
+          "board_basis": "All Inclusive",
+          "price_pp": 100.0,
+          "available": true
+        }
+      ]
+    }
+  ],
+  "scraped_at": "2026-02-17T18:30:26.395618",
+  "total_prices": 56
 }
