@@ -1,23 +1,33 @@
-# Runs the Jet2 scraper every 6 hours, commits fresh pricing data,
-# which triggers the deploy workflow to rebuild the dashboard.
+# Scrapes Jet2holidays prices, saves pricing_data.json, then
+# builds and deploys the dashboard — all in one workflow.
 #
-# You can also run it manually: Actions tab → "Scrape Prices" → Run workflow
+# Trigger manually: Actions tab → "Scrape & Deploy" → Run workflow
+# Also runs automatically every 6 hours.
 
-name: Scrape Prices
+name: Scrape & Deploy
 
 on:
   schedule:
-    # Runs at midnight, 6am, noon, 6pm UTC every day
     - cron: "0 0,6,12,18 * * *"
-  workflow_dispatch: # Manual trigger button
+  workflow_dispatch:
 
 permissions:
   contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
 
 jobs:
-  scrape:
+  scrape-and-deploy:
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      # ---- SCRAPE ----
       - name: Checkout repo
         uses: actions/checkout@v4
 
@@ -26,19 +36,58 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install dependencies
+      - name: Install Python dependencies
         run: |
           pip install playwright
           playwright install chromium --with-deps
 
       - name: Run scraper
         run: python backend/scraper.py
+        continue-on-error: true
 
-      - name: Commit updated pricing data
+      - name: Verify pricing data exists
+        run: |
+          if [ -f frontend/public/pricing_data.json ]; then
+            echo "✅ pricing_data.json found"
+            cat frontend/public/pricing_data.json | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'Hotels: {len(d.get(\"hotels\",[]))}, Prices: {d.get(\"total_prices\",0)}')"
+          else
+            echo "⚠️ No pricing data generated — scraper may have failed"
+            echo "Creating empty placeholder..."
+            mkdir -p frontend/public
+            echo '{"hotels":[],"scraped_at":"'$(date -u +%Y-%m-%dT%H:%M:%S)'","total_prices":0,"error":"Scraper did not return data"}' > frontend/public/pricing_data.json
+          fi
+
+      - name: Commit pricing data to repo
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add frontend/public/pricing_data.json
-          # Only commit if there are changes
           git diff --staged --quiet || git commit -m "🔄 Update pricing data $(date -u +'%Y-%m-%d %H:%M UTC')"
-          git push
+          git push || echo "Push failed — may be a permissions issue"
+
+      # ---- BUILD ----
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install frontend dependencies
+        working-directory: ./frontend
+        run: npm install
+
+      - name: Build frontend
+        working-directory: ./frontend
+        run: npm run build
+
+      # ---- DEPLOY ----
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./frontend/dist
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
