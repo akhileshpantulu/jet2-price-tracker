@@ -45,6 +45,15 @@ jobs:
         run: python backend/scraper.py
         continue-on-error: true
 
+      - name: Upload debug screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scraper-screenshots
+          path: backend/screenshots/
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Verify pricing data exists
         run: |
           if [ -f frontend/public/pricing_data.json ]; then
