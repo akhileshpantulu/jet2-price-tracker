@@ -127,9 +127,10 @@ export default function Dashboard(){
       .catch(()=>setLiveStatus("none"))
   },[]);
 
-  // Build hotel list from live data
+  // Build hotel list from live data (new format with months + room_types)
   const liveHotels=(liveData?.hotels||[]).map(h=>({
-    name:h.name,destination:h.destination,stars:h.stars,rating:h.rating,_prices:h.prices
+    name:h.name,destination:h.destination,stars:h.stars,rating:h.rating,
+    _months:h.months,_roomTypes:h.room_types
   }));
 
   useEffect(()=>{if(query.length<2){setSugg([]);return}
@@ -141,45 +142,41 @@ export default function Dashboard(){
   },[query,mode,liveData]);
 
   const buildLiveMonths=(h,ap,d)=>{
-    // Filter prices for this hotel/airport/nights
-    const prices=(h._prices||[]).filter(p=>p.airport===ap&&p.nights===d);
-    if(!prices.length)return null;
-
-    // Group by room type
-    const roomSet=new Set(prices.map(p=>p.room_type));
-    const rt=[...roomSet];
+    // New format: hotel has months[] with real per-month per-room data
+    // Only show months the scraper actually found prices for
+    if(!h._months||!h._months.length)return null;
+    const rt=h._roomTypes||ROOM_TYPES;
     if(!rt.length)return null;
 
-    // Since we may not have month-by-month data, create a single "current" view
-    // Group prices by room type
-    const now=new Date();
-    const months=[];
-    // Create 12 months, mapping available prices
-    for(let i=0;i<12;i++){
-      const mi=(now.getMonth()+i)%12;
-      const yr=now.getFullYear()+(now.getMonth()+i>=12?1:0);
+    const months=h._months.map(m=>{
       const rooms={};let ch=Infinity,mx=0;
       rt.forEach(r=>{
-        // Find a price for this room type (use first available)
-        const match=prices.find(p=>p.room_type===r);
-        const price=match?match.price_pp:0;
-        const avail=!!match;
-        // Add some seasonal variation to make the chart useful
-        const seasonMult=[.7,.65,.75,.85,1,1.25,1.5,1.55,1.2,.9,.7,.65][mi];
-        const adjPrice=match?Math.round(price*seasonMult):0;
-        rooms[r]={price:adjPrice,available:avail,perNight:Math.round(adjPrice/d)};
-        if(adjPrice>0&&adjPrice<ch)ch=adjPrice;
-        if(adjPrice>mx)mx=adjPrice;
+        const rd=m.rooms[r];
+        if(rd&&rd.price_pp>0){
+          rooms[r]={price:Math.round(rd.price_pp),available:true,perNight:Math.round(rd.price_pp/d)};
+          if(rd.price_pp<ch)ch=rd.price_pp;
+          if(rd.price_pp>mx)mx=rd.price_pp;
+        }else{
+          rooms[r]={price:0,available:false,perNight:0};
+        }
       });
-      months.push({month:MONTHS[mi],year:yr,rooms,cheapest:ch===Infinity?0:ch,mostExpensive:mx,
+      const label=m.month_label||m.month_key||"";
+      const parts=label.split(" ");
+      return{month:parts[0]||"",year:parseInt(parts[1])||2026,rooms,
+        cheapest:ch===Infinity?0:Math.round(ch),mostExpensive:Math.round(mx),
         avgPrice:Math.round(Object.values(rooms).filter(r=>r.price>0).reduce((a,r)=>a+r.price,0)/Math.max(Object.values(rooms).filter(r=>r.price>0).length,1)),
-        availability:Object.values(rooms).filter(r=>r.available).length+"/"+rt.length});
-    }
-    return {months,roomTypes:rt};
+        availability:Object.values(rooms).filter(r=>r.available).length+"/"+rt.length};
+    });
+
+    // Filter out months where nothing is available
+    const validMonths=months.filter(m=>m.cheapest>0);
+    if(!validMonths.length)return null;
+
+    return{months:validMonths,roomTypes:rt};
   };
 
   const load=useCallback((h,ap,d,b)=>{setAnim(false);setTimeout(()=>{
-    if(mode==="live"&&h._prices){
+    if(mode==="live"&&h._months){
       const result=buildLiveMonths(h,ap,d);
       if(result){setData(result.months);setRTypes(result.roomTypes);
         if(!result.roomTypes.includes(selRoom)&&result.roomTypes.length)setSelRoom(result.roomTypes[0])}
