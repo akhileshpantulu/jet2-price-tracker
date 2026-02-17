@@ -46,16 +46,60 @@ function MiniBar({value,max,color}){return <div style={{width:"100%",height:6,ba
 function Dot({on}){return <span style={{display:"inline-block",width:8,height:8,borderRadius:"50%",background:on?"#2ecc71":"#e74c3c",marginRight:6,boxShadow:`0 0 6px ${on?"rgba(46,204,113,0.5)":"rgba(231,76,60,0.5)"}`}}/>}
 
 function PriceChart({data,selectedRoom}){
+  const [hover,setHover]=useState(null);
   const prices=data.map(m=>m.rooms[selectedRoom]?.price||0);
-  const max=Math.max(...prices),min=Math.min(...prices.filter(p=>p>0)),range=max-min||1,H=180,W=100;
-  return <div style={{position:"relative",height:H+40,width:"100%",marginTop:12}}>
-    <svg viewBox={`0 0 ${W} ${H+20}`} style={{width:"100%",height:"100%"}} preserveAspectRatio="none">
-      <defs><linearGradient id="ag" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#f0a500" stopOpacity="0.3"/><stop offset="100%" stopColor="#f0a500" stopOpacity="0"/></linearGradient></defs>
-      {prices.map((_,i)=>{const x=(i/(prices.length-1))*(W-4)+2;return <g key={i}><line x1={x} y1={H} x2={x} y2={H+2} stroke="rgba(255,255,255,0.2)" strokeWidth="0.3"/><text x={x} y={H+10} fill="rgba(255,255,255,0.4)" fontSize="3.5" textAnchor="middle" fontFamily="'DM Sans',sans-serif">{data[i].month}</text></g>})}
-      <polyline points={prices.map((p,i)=>`${(i/(prices.length-1))*(W-4)+2},${H-((p-min)/range)*(H-20)-10}`).join(" ")} fill="none" stroke="#f0a500" strokeWidth="0.8" strokeLinecap="round" strokeLinejoin="round"/>
-      <polygon points={[...prices.map((p,i)=>`${(i/(prices.length-1))*(W-4)+2},${H-((p-min)/range)*(H-20)-10}`),`${W-2},${H}`,`2,${H}`].join(" ")} fill="url(#ag)"/>
-      {prices.map((p,i)=>{const x=(i/(prices.length-1))*(W-4)+2,y=H-((p-min)/range)*(H-20)-10;return <circle key={i} cx={x} cy={y} r="1.2" fill="#1a1a2e" stroke="#f0a500" strokeWidth="0.5"/>})}
-    </svg></div>}
+  const max=Math.max(...prices),min=Math.min(...prices.filter(p=>p>0));
+  const range=max-min||1;
+  // Layout constants
+  const padL=40,padR=12,padT=20,padB=32,W=500,H=200;
+  const chartW=W-padL-padR, chartH=H-padT-padB;
+  const gx=i=>padL+(i/(prices.length-1))*chartW;
+  const gy=p=>padT+chartH-((p-min)/range)*chartH;
+  // Y-axis ticks
+  const yTicks=5;
+  const ySteps=Array.from({length:yTicks},(_,i)=>min+range*(i/(yTicks-1)));
+
+  return <div style={{position:"relative",width:"100%",marginTop:8}} onMouseLeave={()=>setHover(null)}>
+    <svg viewBox={`0 0 ${W} ${H}`} style={{width:"100%",height:"auto",display:"block"}} preserveAspectRatio="xMidYMid meet">
+      <defs>
+        <linearGradient id="ag" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#f0a500" stopOpacity="0.25"/><stop offset="100%" stopColor="#f0a500" stopOpacity="0.02"/></linearGradient>
+      </defs>
+
+      {/* Grid lines + Y labels */}
+      {ySteps.map((v,i)=>{const y=gy(v);return <g key={i}>
+        <line x1={padL} y1={y} x2={W-padR} y2={y} stroke="rgba(255,255,255,0.06)" strokeWidth="1"/>
+        <text x={padL-6} y={y+4} fill="rgba(255,255,255,0.35)" fontSize="11" textAnchor="end" fontFamily="'DM Sans',sans-serif">£{Math.round(v)}</text>
+      </g>})}
+
+      {/* Area fill */}
+      <polygon points={[
+        ...prices.map((p,i)=>`${gx(i)},${gy(p)}`),
+        `${gx(prices.length-1)},${padT+chartH}`,
+        `${gx(0)},${padT+chartH}`
+      ].join(" ")} fill="url(#ag)"/>
+
+      {/* Line */}
+      <polyline points={prices.map((p,i)=>`${gx(i)},${gy(p)}`).join(" ")} fill="none" stroke="#f0a500" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+
+      {/* Data points + month labels */}
+      {prices.map((p,i)=>{const x=gx(i),y=gy(p);return <g key={i}>
+        {/* Tick line */}
+        <line x1={x} y1={padT+chartH} x2={x} y2={padT+chartH+4} stroke="rgba(255,255,255,0.15)" strokeWidth="1"/>
+        {/* Month label */}
+        <text x={x} y={padT+chartH+18} fill="rgba(255,255,255,0.5)" fontSize="11" textAnchor="middle" fontFamily="'DM Sans',sans-serif">{data[i].month}</text>
+        {/* Hover zone */}
+        <rect x={x-chartW/prices.length/2} y={padT} width={chartW/prices.length} height={chartH} fill="transparent" onMouseEnter={()=>setHover(i)} style={{cursor:"crosshair"}}/>
+        {/* Dot */}
+        <circle cx={x} cy={y} r={hover===i?5:3} fill={hover===i?"#f0a500":"#1a1a2e"} stroke="#f0a500" strokeWidth={hover===i?2.5:1.5} style={{transition:"r 0.15s"}}/>
+        {/* Price tooltip on hover */}
+        {hover===i&&<><rect x={x-24} y={y-26} width={48} height={20} rx={4} fill="#f0a500"/>
+          <text x={x} y={y-12} fill="#0d0d1a" fontSize="11" fontWeight="700" textAnchor="middle" fontFamily="'DM Sans',sans-serif">£{p}</text>
+          {/* Vertical guide line */}
+          <line x1={x} y1={y+5} x2={x} y2={padT+chartH} stroke="#f0a500" strokeWidth="1" strokeDasharray="3,3" opacity="0.4"/>
+        </>}
+      </g>})}
+    </svg>
+  </div>}
 
 export default function Dashboard(){
   const [mode,setMode]=useState(API_BASE?"live":"demo");
