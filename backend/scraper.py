@@ -22,16 +22,23 @@ AIRPORTS = {
 
 # ----------------------------------------------------------------
 # EDIT THIS — add/remove hotels you want to track
-# Find the slug and destination_path from the hotel URL on jet2holidays.com
-# e.g. jet2holidays.com/destinations/balearics/majorca/alcudia/sunwing-alcudia-beach
-#      → destination_path = "balearics/majorca/alcudia"
-#      → slug = "sunwing-alcudia-beach"
+# Find the path from the hotel URL on jet2holidays.com
+# e.g. jet2holidays.com/greece/kos/mastichari/gaia-palace
+#      → url_path = "greece/kos/mastichari/gaia-palace"
 # ----------------------------------------------------------------
 TRACKED_HOTELS = [
     {
+        "name": "Gaia Palace",
+        "url_path": "greece/kos/mastichari/gaia-palace",
+        "destination_label": "Kos, Greece",
+        "stars": 5,
+        "rating": 4.5,
+        "airports": ["MAN", "LBA"],
+        "nights": [7],
+    },
+    {
         "name": "Sunwing Alcudia Beach",
-        "slug": "alcudia-beach",
-        "destination_path": "balearics/majorca/alcudia",
+        "url_path": "balearics/majorca/alcudia/alcudia-beach",
         "destination_label": "Majorca, Spain",
         "stars": 4,
         "rating": 4.3,
@@ -40,23 +47,12 @@ TRACKED_HOTELS = [
     },
     {
         "name": "Hotel Flamingo Oasis",
-        "slug": "flamingo-beach-resort",
-        "destination_path": "spain/costa-blanca/benidorm",
+        "url_path": "spain/costa-blanca/benidorm/flamingo-beach-resort",
         "destination_label": "Benidorm, Spain",
         "stars": 4,
         "rating": 4.1,
         "airports": ["MAN"],
         "nights": [7],
-    },
-    {
-        "name": "Zafiro Palace Alcudia",
-        "slug": "zafiro-palace-alcudia",
-        "destination_path": "balearics/majorca/alcudia",
-        "destination_label": "Majorca, Spain",
-        "stars": 5,
-        "rating": 4.7,
-        "airports": ["MAN", "LBA"],
-        "nights": [7, 10],
     },
 ]
 
@@ -68,7 +64,7 @@ async def scrape_hotel(page, hotel, airport_code, nights):
     airport_id = AIRPORTS.get(airport_code, "8")
     url = (
         f"https://www.jet2holidays.com/"
-        f"{hotel['destination_path']}/{hotel['slug']}"
+        f"{hotel['url_path']}"
         f"?airport={airport_id}&nights={nights}&adults=2&children=0&infants=0"
     )
     results = []
