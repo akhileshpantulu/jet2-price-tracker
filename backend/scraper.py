@@ -30,7 +30,7 @@ AIRPORTS = {
 TRACKED_HOTELS = [
     {
         "name": "Sunwing Alcudia Beach",
-        "slug": "sunwing-alcudia-beach",
+        "slug": "alcudia-beach",
         "destination_path": "balearics/majorca/alcudia",
         "destination_label": "Majorca, Spain",
         "stars": 4,
@@ -40,7 +40,7 @@ TRACKED_HOTELS = [
     },
     {
         "name": "Hotel Flamingo Oasis",
-        "slug": "hotel-flamingo-oasis",
+        "slug": "flamingo-beach-resort",
         "destination_path": "spain/costa-blanca/benidorm",
         "destination_label": "Benidorm, Spain",
         "stars": 4,
@@ -67,7 +67,7 @@ async def scrape_hotel(page, hotel, airport_code, nights):
     """Scrape a single hotel/airport/duration combination."""
     airport_id = AIRPORTS.get(airport_code, "8")
     url = (
-        f"https://www.jet2holidays.com/destinations/"
+        f"https://www.jet2holidays.com/"
         f"{hotel['destination_path']}/{hotel['slug']}"
         f"?airport={airport_id}&nights={nights}&adults=2&children=0&infants=0"
     )
