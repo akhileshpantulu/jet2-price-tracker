@@ -22,20 +22,9 @@ from pathlib import Path
 # Jet2 airport IDs — these are Jet2's internal numeric IDs, NOT IATA codes
 # Determined by inspecting real Jet2 URLs
 AIRPORTS = {
-    "MAN": 3,   # Manchester
-    "LBA": 4,   # Leeds Bradford
-    "NCL": 5,   # Newcastle
-    "STN": 7,   # London Stansted
-    "EMA": 8,   # East Midlands
-    "EDI": 9,   # Edinburgh
-    "BHX": 10,  # Birmingham
-    "BFS": 11,  # Belfast
-    "GLA": 12,  # Glasgow
-    "BRS": 14,  # Bristol
-    "LPL": 15,  # Liverpool
-    "BOH": 16,  # Bournemouth
-    "LGW": 17,  # London Gatwick
-    "LTN": 18,  # London Luton
+    "STN": 99,   # London Stansted
+    "LGW": 7,  # London Gatwick
+    "LTN": 127,  # London Luton
 }
 
 MONTH_NAMES = {
