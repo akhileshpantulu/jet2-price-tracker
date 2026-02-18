@@ -102,11 +102,11 @@ def build_url(hotel, airport_id, duration, date_obj):
     )
 
 
-async def safe_goto(page, url, retries=3):
+async def safe_goto(page, url, retries=2):
     """Navigate with retries for HTTP2 errors."""
     for attempt in range(retries):
         try:
-            resp = await page.goto(url, wait_until="domcontentloaded", timeout=45000)
+            resp = await page.goto(url, wait_until="domcontentloaded", timeout=20000)
             if resp and resp.status and resp.status >= 400:
                 print(f"[HTTP {resp.status}] ", end="", flush=True)
                 if resp.status == 403:
@@ -115,11 +115,10 @@ async def safe_goto(page, url, retries=3):
         except Exception as e:
             err = str(e)
             if attempt < retries - 1:
-                wait = 5 + attempt * 5
-                print(f"[retry {attempt+1}, wait {wait}s] ", end="", flush=True)
-                await asyncio.sleep(wait)
+                print(f"[retry {attempt+1}] ", end="", flush=True)
+                await asyncio.sleep(2)
             else:
-                print(f"[failed: {err[:60]}] ", end="", flush=True)
+                print(f"[failed: {err[:50]}] ", end="", flush=True)
                 return False
     return False
 
@@ -244,7 +243,7 @@ async def scrape_hotel(page, hotel, airport_id, duration):
         else:
             print("— no prices found")
 
-        await asyncio.sleep(4)
+        await asyncio.sleep(1)
 
     return all_month_data
 
