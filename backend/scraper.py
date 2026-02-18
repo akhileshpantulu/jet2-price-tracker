@@ -1,11 +1,15 @@
 """
-Jet2holidays Price Scraper v3 — GitHub Actions version
-========================================================
-Key changes from v2:
-- Saves debug screenshots (uploaded as GitHub Actions artifacts)
-- Waits for actual price elements instead of relying on networkidle
-- Strict validation: only records prices found on the actual page
-- Never fabricates or duplicates prices across months/hotels
+Jet2holidays Price Scraper v4
+==============================
+Now using the CORRECT Jet2 URL format discovered from real site URLs:
+
+  jet2holidays.com/beach/greece/kos/mastichari/gaia-palace
+    ?duration=7
+    &occupancy=r2c
+    &airport=3
+    &date=02-05-2026
+
+Outputs: frontend/public/pricing_data.json
 """
 
 import json
@@ -15,49 +19,68 @@ import asyncio
 from datetime import datetime, timedelta
 from pathlib import Path
 
+# Jet2 airport IDs — these are Jet2's internal numeric IDs, NOT IATA codes
+# Determined by inspecting real Jet2 URLs
 AIRPORTS = {
-    "LBA": "4", "MAN": "8", "EMA": "3", "BHX": "1",
-    "EDI": "9", "GLA": "69", "NCL": "5", "STN": "7",
-    "BFS": "63", "BRS": "77", "LGW": "99", "LTN": "127",
-    "LPL": "98", "BOH": "118",
+    "MAN": 3,   # Manchester
+    "LBA": 4,   # Leeds Bradford
+    "NCL": 5,   # Newcastle
+    "STN": 7,   # London Stansted
+    "EMA": 8,   # East Midlands
+    "EDI": 9,   # Edinburgh
+    "BHX": 10,  # Birmingham
+    "BFS": 11,  # Belfast
+    "GLA": 12,  # Glasgow
+    "BRS": 14,  # Bristol
+    "LPL": 15,  # Liverpool
+    "BOH": 16,  # Bournemouth
+    "LGW": 17,  # London Gatwick
+    "LTN": 18,  # London Luton
 }
 
 MONTH_NAMES = {
     1: "Jan", 2: "Feb", 3: "Mar", 4: "Apr", 5: "May", 6: "Jun",
-    7: "Jul", 8: "Aug", 9: "Sep", 10: "Oct", 11: "Nov", 12: "Dec",
+    7: "Jul", 8: "Aug", 9: "Sep", 10: "Nov", 11: "Nov", 12: "Dec",
 }
 
 # ----------------------------------------------------------------
 # EDIT THIS — add/remove hotels you want to track
-# url_path = everything after jet2holidays.com/ in the hotel URL
+#
+# To find the url_path for any hotel:
+#   1. Go to jet2holidays.com
+#   2. Search for the hotel and click through to its page
+#   3. Copy everything after "jet2holidays.com/" from the URL
+#      e.g. "beach/greece/kos/mastichari/gaia-palace"
+#
+# airport_ids: use the numbers from the AIRPORTS dict above
 # ----------------------------------------------------------------
 TRACKED_HOTELS = [
     {
         "name": "Gaia Palace",
-        "url_path": "greece/kos/mastichari/gaia-palace",
+        "url_path": "beach/greece/kos/mastichari/gaia-palace",
         "destination_label": "Kos, Greece",
         "stars": 5,
         "rating": 4.5,
-        "airports": ["MAN"],
-        "nights": [7],
+        "airport_ids": [3],       # Manchester
+        "durations": [7],
     },
     {
         "name": "Sunwing Alcudia Beach",
-        "url_path": "balearics/majorca/alcudia/sunwing-alcudia-beach",
+        "url_path": "beach/balearics/majorca/alcudia/sunwing-alcudia-beach",
         "destination_label": "Majorca, Spain",
         "stars": 4,
         "rating": 4.3,
-        "airports": ["MAN"],
-        "nights": [7],
+        "airport_ids": [3],
+        "durations": [7],
     },
     {
         "name": "Hotel Flamingo Oasis",
-        "url_path": "spain/costa-blanca/benidorm/hotel-flamingo-oasis",
+        "url_path": "beach/spain/costa-blanca/benidorm/hotel-flamingo-oasis",
         "destination_label": "Benidorm, Spain",
         "stars": 4,
         "rating": 4.1,
-        "airports": ["MAN"],
-        "nights": [7],
+        "airport_ids": [3],
+        "durations": [7],
     },
 ]
 
@@ -66,33 +89,40 @@ OUTPUT_PATH = OUTPUT_DIR / "pricing_data.json"
 SCREENSHOT_DIR = Path(__file__).parent / "screenshots"
 
 
-async def scrape_hotel(page, hotel, airport_code, nights):
+def build_url(hotel, airport_id, duration, date_obj):
     """
-    Load the hotel page for each target month and extract ONLY
-    prices that actually appear on the page.
+    Build the exact Jet2 URL format:
+    /beach/greece/kos/mastichari/gaia-palace?duration=7&occupancy=r2c&airport=3&date=02-05-2026
     """
-    airport_id = AIRPORTS.get(airport_code, "8")
-    base_url = f"https://www.jet2holidays.com/{hotel['url_path']}"
-    all_month_data = {}
+    date_str = date_obj.strftime("%d-%m-%Y")
+    return (
+        f"https://www.jet2holidays.com/{hotel['url_path']}"
+        f"?duration={duration}"
+        f"&occupancy=r2c"
+        f"&airport={airport_id}"
+        f"&date={date_str}"
+    )
+
+
+async def scrape_hotel(page, hotel, airport_id, duration):
+    """Scrape one hotel across all months."""
     now = datetime.now()
+    all_month_data = {}
+
+    # Get airport name for logging
+    apt_name = next((k for k, v in AIRPORTS.items() if v == airport_id), str(airport_id))
 
     for month_offset in range(12):
-        target = now + timedelta(days=30 * month_offset + 15)
+        # Target the 1st of each month
+        target = datetime(now.year, now.month, 1) + timedelta(days=32 * month_offset)
+        target = target.replace(day=1)
         month_key = target.strftime("%Y-%m")
         month_label = f"{MONTH_NAMES[target.month]} {target.year}"
-        date_param = target.strftime("%d-%m-%Y")
 
-        url = (
-            f"{base_url}"
-            f"?airport={airport_id}"
-            f"&nights={nights}"
-            f"&adults=2&children=0&infants=0"
-            f"&date={date_param}"
-        )
+        url = build_url(hotel, airport_id, duration, target)
+        print(f"    {month_label}: {url[:100]}...")
 
-        print(f"    {month_label}: ", end="", flush=True)
-
-        # Collect API responses
+        # Collect intercepted API data
         api_prices = []
 
         async def capture_response(response):
@@ -100,29 +130,26 @@ async def scrape_hotel(page, hotel, airport_code, nights):
                 ct = response.headers.get("content-type", "")
                 if "json" not in ct:
                     return
-                url_lower = response.url.lower()
-                keywords = ["price", "avail", "package", "room", "search",
-                           "holiday", "calendar", "basket", "quote"]
-                if not any(k in url_lower for k in keywords):
-                    return
-                body = await response.json()
-                found = _extract_prices(body)
-                if found:
+                lo = response.url.lower()
+                if any(k in lo for k in ["price", "avail", "package", "room",
+                                          "search", "holiday", "calendar",
+                                          "basket", "quote", "result"]):
+                    body = await response.json()
+                    found = _extract_prices(body)
                     api_prices.extend(found)
-                    print(f"[API:{len(found)}] ", end="", flush=True)
             except Exception:
                 pass
 
         page.on("response", capture_response)
 
         try:
-            await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+            await page.goto(url, wait_until="domcontentloaded", timeout=35000)
         except Exception as e:
-            print(f"✗ load failed: {e}")
+            print(f"      ✗ Load failed: {e}")
             page.remove_listener("response", capture_response)
             continue
 
-        # Dismiss cookie banner on first load
+        # Cookie banner (first load only)
         if month_offset == 0:
             for sel in ["#onetrust-accept-btn-handler",
                        "button:has-text('Accept All')",
@@ -136,123 +163,103 @@ async def scrape_hotel(page, hotel, airport_code, nights):
                 except Exception:
                     pass
 
-        # Wait for price content to appear (try multiple selectors)
-        price_appeared = False
-        price_selectors = [
-            "text=£",
-            "[class*='price']",
-            "[data-testid*='price']",
-            "[class*='Price']",
-            "[class*='cost']",
-        ]
-        for sel in price_selectors:
+        # Wait for price content — try several selectors
+        for sel in ["text=£", "[class*='price']", "[class*='Price']"]:
             try:
-                await page.wait_for_selector(sel, timeout=8000, state="visible")
-                price_appeared = True
+                await page.wait_for_selector(sel, timeout=10000, state="visible")
                 break
             except Exception:
                 continue
 
-        if not price_appeared:
-            # Extra wait in case content is still loading
-            await asyncio.sleep(5)
+        # Extra wait for JS to finish rendering
+        await asyncio.sleep(4)
 
-        # Scroll to trigger lazy content
-        await page.evaluate("window.scrollTo(0, document.body.scrollHeight / 3)")
+        # Scroll to load lazy content
+        await page.evaluate("window.scrollTo(0, document.body.scrollHeight / 2)")
         await asyncio.sleep(2)
-        await page.evaluate("window.scrollTo(0, document.body.scrollHeight * 2 / 3)")
+        await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
         await asyncio.sleep(2)
 
-        # Save screenshot for debugging
+        # Screenshot for debugging
         SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
         slug = hotel["url_path"].split("/")[-1]
-        ss_path = SCREENSHOT_DIR / f"{slug}_{airport_code}_{month_key}.png"
+        ss_path = SCREENSHOT_DIR / f"{slug}_{apt_name}_{month_key}.png"
         try:
             await page.screenshot(path=str(ss_path), full_page=True)
         except Exception:
             pass
 
-        # Now extract prices from DOM
+        # DOM price extraction
         dom_prices = await _extract_dom_prices(page)
 
         page.remove_listener("response", capture_response)
 
-        # Combine API + DOM prices, deduplicate
+        # Combine and validate
         all_prices = api_prices + dom_prices
 
-        # STRICT: Filter out prices that look like they're from the
-        # promotional banner ("SAVE £100pp") or navigation
-        valid_prices = []
+        # Filter out promotional banner prices and duplicates
+        valid = []
         seen = set()
         for p in all_prices:
             price = p["price"]
-            # Skip common banner/promo values
-            if price in (100, 50, 25, 200):
+            if price in (100, 50, 25, 200, 150):  # Common promo values
                 continue
-            # Skip unrealistic prices
-            if price < 100 or price > 15000:
+            if price < 100 or price > 20000:
                 continue
-            # Deduplicate
             key = (p.get("room", ""), round(price))
-            if key in seen:
-                continue
-            seen.add(key)
-            valid_prices.append(p)
+            if key not in seen:
+                seen.add(key)
+                valid.append(p)
 
-        if valid_prices:
-            # Check for "not available" indicators on page
-            content = await page.text_content("body") or ""
-            no_avail_phrases = [
-                "no availability", "no holidays found",
-                "currently unavailable", "no results",
-                "sorry, there are no", "no packages available"
-            ]
-            is_unavailable = any(p in content.lower() for p in no_avail_phrases)
+        # Check for "not available" on page
+        body_text = await page.text_content("body") or ""
+        body_lower = body_text.lower()
+        unavail_phrases = [
+            "no availability", "no holidays found", "currently unavailable",
+            "no results", "sorry, there are no", "no packages available",
+            "not available for this date"
+        ]
+        is_unavailable = any(phrase in body_lower for phrase in unavail_phrases)
 
-            if is_unavailable:
-                print(f"— unavailable (page says no availability)")
-            else:
-                all_month_data[month_key] = {
-                    "month_label": month_label,
-                    "rooms": {}
-                }
-                for p in valid_prices:
-                    room = p.get("room", "Standard")
-                    existing = all_month_data[month_key]["rooms"].get(room)
-                    # Keep cheapest per room per month
-                    if not existing or p["price"] < existing["price_pp"]:
-                        all_month_data[month_key]["rooms"][room] = {
-                            "price_pp": round(p["price"]),
-                            "board_basis": p.get("board", "Unknown"),
-                            "departure_date": p.get("date", ""),
-                            "available": True,
-                            "airport": airport_code,
-                            "nights": nights,
-                        }
-                print(f"✓ {len(valid_prices)} prices, {len(all_month_data[month_key]['rooms'])} rooms")
+        if valid and not is_unavailable:
+            all_month_data[month_key] = {
+                "month_label": month_label,
+                "rooms": {}
+            }
+            for p in valid:
+                room = p.get("room", "Standard")
+                existing = all_month_data[month_key]["rooms"].get(room)
+                if not existing or p["price"] < existing["price_pp"]:
+                    all_month_data[month_key]["rooms"][room] = {
+                        "price_pp": round(p["price"]),
+                        "board_basis": p.get("board", "Unknown"),
+                        "departure_date": p.get("date", ""),
+                        "available": True,
+                        "airport": apt_name,
+                        "nights": duration,
+                    }
+            room_count = len(all_month_data[month_key]["rooms"])
+            print(f"      ✓ {len(valid)} prices, {room_count} room types")
+        elif is_unavailable:
+            print(f"      — not available")
         else:
-            # Check if genuinely unavailable vs scraper failure
-            content = await page.text_content("body") or ""
-            if any(p in content.lower() for p in ["no availability", "no holidays", "sorry"]):
-                print(f"— not available this month")
-            else:
-                print(f"— no prices found (check screenshot)")
+            print(f"      — no prices found (check screenshot)")
 
-        await asyncio.sleep(3)  # Respectful delay
+        await asyncio.sleep(3)
 
     return all_month_data
 
 
 def _extract_prices(obj, depth=0):
-    """Recursively extract prices from API JSON."""
+    """Recursively find prices in API JSON responses."""
     if depth > 8 or not obj:
         return []
     found = []
     if isinstance(obj, dict):
         price = None
-        for k in ["pricePerPerson", "price", "leadInPrice",
-                   "pricePP", "fromPrice", "totalPricePerPerson",
-                   "adultPrice", "leadPrice"]:
+        for k in ["pricePerPerson", "price", "leadInPrice", "pricePP",
+                   "fromPrice", "totalPricePerPerson", "adultPrice",
+                   "leadPrice", "pp", "perPerson"]:
             if k in obj:
                 try:
                     price = float(obj[k])
@@ -260,32 +267,21 @@ def _extract_prices(obj, depth=0):
                     pass
                 if price and price > 50:
                     break
-
         if price and price > 50:
-            date_val = ""
-            for k in ["departureDate", "date", "outboundDate",
-                       "departDate", "checkInDate"]:
+            entry = {"price": price, "date": "", "room": "Standard", "board": "Unknown"}
+            for k in ["departureDate", "date", "outboundDate", "departDate"]:
                 if k in obj and obj[k]:
-                    date_val = str(obj[k])[:10]
+                    entry["date"] = str(obj[k])[:10]
                     break
-            room = "Standard"
-            for k in ["roomType", "roomDescription", "roomName",
-                       "name", "description", "type"]:
+            for k in ["roomType", "roomDescription", "roomName", "name"]:
                 if k in obj and isinstance(obj[k], str) and 3 < len(obj[k]) < 80:
-                    room = obj[k].strip()
+                    entry["room"] = obj[k].strip()
                     break
-            board = "Unknown"
-            for k in ["boardBasis", "mealPlan", "board",
-                       "boardType", "boardDescription"]:
+            for k in ["boardBasis", "mealPlan", "board", "boardType"]:
                 if k in obj and isinstance(obj[k], str):
-                    board = obj[k].strip()
+                    entry["board"] = obj[k].strip()
                     break
-            found.append({
-                "price": price,
-                "date": date_val,
-                "room": room,
-                "board": board,
-            })
+            found.append(entry)
         else:
             for v in obj.values():
                 found.extend(_extract_prices(v, depth + 1))
@@ -296,54 +292,52 @@ def _extract_prices(obj, depth=0):
 
 
 async def _extract_dom_prices(page):
-    """Extract prices from the visible DOM with context."""
+    """Extract prices from visible page, excluding nav/header/footer."""
     results = []
     try:
-        # Strategy 1: Find elements containing £ prices
+        # Target only main content area price elements
         price_els = await page.query_selector_all(
             ":is([class*='price'], [class*='Price'], [class*='cost'], "
-            "[class*='amount'], [data-testid*='price']):not(nav *):not(header *):not(footer *)"
+            "[class*='amount'], [data-testid*='price'])"
+            ":not(nav *):not(header *):not(footer *):not([class*='banner'] *)"
+            ":not([class*='promo'] *):not([class*='save'] *)"
         )
 
         for el in price_els:
             try:
                 text = await el.inner_text()
-                matches = re.findall(r'£\s*([\d,]+(?:\.\d{2})?)', text)
-                if not matches:
+                # Skip promotional text
+                if any(w in text.lower() for w in ["save", "off", "discount", "was "]):
                     continue
 
-                for m in matches:
+                for m in re.findall(r'£\s*([\d,]+(?:\.\d{2})?)', text):
                     price = float(m.replace(",", ""))
-                    if price < 100 or price > 15000:
+                    if price < 100 or price > 20000:
                         continue
 
-                    # Get context from parent
                     room = "Standard"
                     board = "Unknown"
                     date_str = ""
+
+                    # Get context from parent container
                     try:
-                        parent = await el.evaluate_handle(
+                        ctx = await el.evaluate(
                             """el => {
-                                let p = el.parentElement;
-                                for (let i = 0; i < 5 && p; i++) {
-                                    if (p.className && (
-                                        p.className.includes('room') ||
-                                        p.className.includes('card') ||
-                                        p.className.includes('option') ||
-                                        p.className.includes('package') ||
-                                        p.className.includes('result')
-                                    )) return p;
+                                let p = el;
+                                for (let i = 0; i < 6 && p; i++) {
                                     p = p.parentElement;
+                                    if (p && p.className && (
+                                        /room|card|option|package|result|item/i.test(p.className)
+                                    )) return p.innerText;
                                 }
-                                return el.parentElement;
+                                return el.parentElement?.innerText || '';
                             }"""
                         )
-                        if parent:
-                            ctx = await parent.inner_text()
+                        if ctx:
                             rm = re.search(
                                 r'(Standard|Superior|Family|Suite|Sea View|'
                                 r'Deluxe|Premium|Junior Suite|Classic|Studio|'
-                                r'Double|Twin|Single|Economy)',
+                                r'Double|Twin|Single|Economy|Garden View|Pool View)',
                                 ctx, re.I
                             )
                             if rm:
@@ -374,37 +368,24 @@ async def _extract_dom_prices(page):
             except Exception:
                 continue
 
-        # Strategy 2: If no elements found, try broader text search
-        # but ONLY on the main content area
+        # Fallback: broader search in main content
         if not results:
-            main_content = ""
-            for sel in ["main", "#main", "[role='main']", ".hotel-content",
-                        ".page-content", "[class*='content']"]:
+            for sel in ["main", "#main", "[role='main']", "[class*='content']"]:
                 try:
                     el = await page.query_selector(sel)
                     if el:
-                        main_content = await el.inner_text()
-                        break
+                        text = await el.inner_text()
+                        for m in re.findall(r'£\s*([\d,]+(?:\.\d{2})?)\s*(?:pp|per\s*person)', text, re.I):
+                            price = float(m.replace(",", ""))
+                            if 100 < price < 20000:
+                                results.append({"price": price, "room": "Standard", "board": "Unknown", "date": ""})
+                        if results:
+                            break
                 except Exception:
                     continue
 
-            if main_content:
-                price_matches = re.findall(
-                    r'£\s*([\d,]+(?:\.\d{2})?)\s*(?:pp|per\s*person)',
-                    main_content, re.I
-                )
-                for m in price_matches:
-                    price = float(m.replace(",", ""))
-                    if 100 < price < 15000:
-                        results.append({
-                            "price": price,
-                            "room": "Standard",
-                            "board": "Unknown",
-                            "date": "",
-                        })
-
     except Exception as e:
-        print(f"[DOM error: {e}] ", end="")
+        print(f"      [DOM error: {e}]")
 
     return results
 
@@ -413,8 +394,9 @@ async def main():
     from playwright.async_api import async_playwright
 
     print(f"\n{'='*60}")
-    print(f"JET2 SCRAPER v3 — {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    print(f"JET2 SCRAPER v4 — {datetime.now().strftime('%Y-%m-%d %H:%M')}")
     print(f"Hotels: {len(TRACKED_HOTELS)}")
+    print(f"URL format: /beach/...?duration=X&occupancy=r2c&airport=N&date=dd-mm-yyyy")
     print(f"{'='*60}")
 
     all_hotels = {}
@@ -427,7 +409,6 @@ async def main():
                 "--disable-blink-features=AutomationControlled",
                 "--no-sandbox",
                 "--disable-dev-shm-usage",
-                "--disable-web-security",
             ],
         )
         context = await browser.new_context(
@@ -440,18 +421,16 @@ async def main():
             locale="en-GB",
             timezone_id="Europe/London",
         )
-        # Don't block images this time — they might be needed for
-        # the page to render correctly
         page = await context.new_page()
 
         for hotel in TRACKED_HOTELS:
-            for airport in hotel["airports"]:
-                for nights in hotel["nights"]:
-                    print(f"\n▶ {hotel['name']} | {airport} | {nights}N")
+            for apt_id in hotel["airport_ids"]:
+                for dur in hotel["durations"]:
+                    apt_name = next((k for k, v in AIRPORTS.items() if v == apt_id), str(apt_id))
+                    print(f"\n▶ {hotel['name']} | {apt_name} (ID:{apt_id}) | {dur}N")
+
                     try:
-                        month_data = await scrape_hotel(
-                            page, hotel, airport, nights
-                        )
+                        month_data = await scrape_hotel(page, hotel, apt_id, dur)
                         if month_data:
                             key = hotel["name"]
                             if key not in all_hotels:
@@ -498,14 +477,11 @@ async def main():
     print(f"\n{'='*60}")
     print(f"RESULTS:")
     for h in hotel_list:
-        avail = len(h["months"])
-        print(f"  {h['name']}: {avail} months with prices, "
-              f"rooms: {', '.join(h['room_types']) or 'none'}")
+        print(f"  {h['name']}: {len(h['months'])} months, rooms: {', '.join(h['room_types']) or 'none'}")
     print(f"\nTotal: {total_prices} price points across {len(hotel_list)} hotels")
     print(f"Output: {OUTPUT_PATH}")
     if SCREENSHOT_DIR.exists():
-        ss_count = len(list(SCREENSHOT_DIR.glob("*.png")))
-        print(f"Screenshots: {ss_count} saved in {SCREENSHOT_DIR}")
+        print(f"Screenshots: {len(list(SCREENSHOT_DIR.glob('*.png')))} saved")
     print(f"{'='*60}\n")
 
 
