@@ -1,26 +1,32 @@
 """
-Jet2holidays Price Scraper v4
+Jet2holidays Price Scraper v5
 ==============================
-Now using the CORRECT Jet2 URL format discovered from real site URLs:
+Fixes ERR_HTTP2_PROTOCOL_ERROR by:
+- Using playwright-stealth to avoid bot detection
+- Disabling HTTP/2 (forces HTTP/1.1)
+- Adding realistic browser fingerprint
+- Retrying with fallback strategies
 
+URL format:
   jet2holidays.com/beach/greece/kos/mastichari/gaia-palace
-    ?duration=7
-    &occupancy=r2c
-    &airport=3
-    &date=02-05-2026
-
-Outputs: frontend/public/pricing_data.json
+    ?duration=7&occupancy=r2c&airport=3&date=02-05-2026
 """
 
 import json
 import re
 import os
+import sys
 import asyncio
 from datetime import datetime, timedelta
 from pathlib import Path
 
-# Jet2 airport IDs — these are Jet2's internal numeric IDs, NOT IATA codes
-# Determined by inspecting real Jet2 URLs
+# Install stealth plugin if missing
+try:
+    from playwright_stealth import stealth_async
+except ImportError:
+    os.system(f"{sys.executable} -m pip install playwright-stealth")
+    from playwright_stealth import stealth_async
+
 AIRPORTS = {
     "STN": 99,   # London Stansted
     "LGW": 7,  # London Gatwick
@@ -29,19 +35,12 @@ AIRPORTS = {
 
 MONTH_NAMES = {
     1: "Jan", 2: "Feb", 3: "Mar", 4: "Apr", 5: "May", 6: "Jun",
-    7: "Jul", 8: "Aug", 9: "Sep", 10: "Nov", 11: "Nov", 12: "Dec",
+    7: "Jul", 8: "Aug", 9: "Sep", 10: "Oct", 11: "Nov", 12: "Dec",
 }
 
 # ----------------------------------------------------------------
-# EDIT THIS — add/remove hotels you want to track
-#
-# To find the url_path for any hotel:
-#   1. Go to jet2holidays.com
-#   2. Search for the hotel and click through to its page
-#   3. Copy everything after "jet2holidays.com/" from the URL
-#      e.g. "beach/greece/kos/mastichari/gaia-palace"
-#
-# airport_ids: use the numbers from the AIRPORTS dict above
+# EDIT THIS — add/remove hotels
+# url_path = everything after jet2holidays.com/ in the hotel URL
 # ----------------------------------------------------------------
 TRACKED_HOTELS = [
     {
@@ -50,7 +49,7 @@ TRACKED_HOTELS = [
         "destination_label": "Kos, Greece",
         "stars": 5,
         "rating": 4.5,
-        "airport_ids": [3],       # Manchester
+        "airport_ids": [3],
         "durations": [7],
     },
     {
@@ -79,10 +78,6 @@ SCREENSHOT_DIR = Path(__file__).parent / "screenshots"
 
 
 def build_url(hotel, airport_id, duration, date_obj):
-    """
-    Build the exact Jet2 URL format:
-    /beach/greece/kos/mastichari/gaia-palace?duration=7&occupancy=r2c&airport=3&date=02-05-2026
-    """
     date_str = date_obj.strftime("%d-%m-%Y")
     return (
         f"https://www.jet2holidays.com/{hotel['url_path']}"
@@ -93,25 +88,67 @@ def build_url(hotel, airport_id, duration, date_obj):
     )
 
 
+async def safe_goto(page, url, screenshot_path=None, retries=3):
+    """Navigate with retries and different wait strategies."""
+    for attempt in range(retries):
+        try:
+            if attempt == 0:
+                resp = await page.goto(url, wait_until="domcontentloaded", timeout=45000)
+            elif attempt == 1:
+                resp = await page.goto(url, wait_until="commit", timeout=30000)
+                await asyncio.sleep(5)
+            else:
+                resp = await page.goto(url, timeout=30000)
+                await asyncio.sleep(8)
+
+            if resp and resp.status and resp.status < 400:
+                return True
+            elif resp:
+                print(f"[HTTP {resp.status}] ", end="", flush=True)
+                if resp.status == 403:
+                    print("BLOCKED ", end="", flush=True)
+                    return False
+
+            return True
+
+        except Exception as e:
+            err_str = str(e)
+            if "ERR_HTTP2_PROTOCOL_ERROR" in err_str:
+                print(f"[H2 err, retry {attempt+1}] ", end="", flush=True)
+                await asyncio.sleep(3 + attempt * 3)
+            elif "Timeout" in err_str:
+                print(f"[timeout, retry {attempt+1}] ", end="", flush=True)
+                await asyncio.sleep(2)
+            else:
+                print(f"[err: {err_str[:50]}, retry {attempt+1}] ", end="", flush=True)
+                await asyncio.sleep(2)
+
+    # Take screenshot of whatever state we're in
+    if screenshot_path:
+        try:
+            await page.screenshot(path=str(screenshot_path))
+        except Exception:
+            pass
+
+    return False
+
+
 async def scrape_hotel(page, hotel, airport_id, duration):
-    """Scrape one hotel across all months."""
+    """Scrape one hotel month by month."""
     now = datetime.now()
     all_month_data = {}
-
-    # Get airport name for logging
     apt_name = next((k for k, v in AIRPORTS.items() if v == airport_id), str(airport_id))
+    slug = hotel["url_path"].split("/")[-1]
 
     for month_offset in range(12):
-        # Target the 1st of each month
         target = datetime(now.year, now.month, 1) + timedelta(days=32 * month_offset)
         target = target.replace(day=1)
         month_key = target.strftime("%Y-%m")
         month_label = f"{MONTH_NAMES[target.month]} {target.year}"
 
         url = build_url(hotel, airport_id, duration, target)
-        print(f"    {month_label}: {url[:100]}...")
+        print(f"    {month_label}: ", end="", flush=True)
 
-        # Collect intercepted API data
         api_prices = []
 
         async def capture_response(response):
@@ -131,14 +168,23 @@ async def scrape_hotel(page, hotel, airport_id, duration):
 
         page.on("response", capture_response)
 
-        try:
-            await page.goto(url, wait_until="domcontentloaded", timeout=35000)
-        except Exception as e:
-            print(f"      ✗ Load failed: {e}")
+        ss_path = SCREENSHOT_DIR / f"{slug}_{apt_name}_{month_key}.png"
+        SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
+
+        loaded = await safe_goto(page, url, screenshot_path=ss_path)
+
+        if not loaded:
+            print("✗ failed to load")
             page.remove_listener("response", capture_response)
+            # Still take a screenshot of whatever we see
+            try:
+                await page.screenshot(path=str(ss_path))
+            except Exception:
+                pass
+            await asyncio.sleep(5)
             continue
 
-        # Cookie banner (first load only)
+        # Cookie banner (first load)
         if month_offset == 0:
             for sel in ["#onetrust-accept-btn-handler",
                        "button:has-text('Accept All')",
@@ -152,7 +198,7 @@ async def scrape_hotel(page, hotel, airport_id, duration):
                 except Exception:
                     pass
 
-        # Wait for price content — try several selectors
+        # Wait for prices to appear
         for sel in ["text=£", "[class*='price']", "[class*='Price']"]:
             try:
                 await page.wait_for_selector(sel, timeout=10000, state="visible")
@@ -160,38 +206,29 @@ async def scrape_hotel(page, hotel, airport_id, duration):
             except Exception:
                 continue
 
-        # Extra wait for JS to finish rendering
-        await asyncio.sleep(4)
+        await asyncio.sleep(3)
 
-        # Scroll to load lazy content
+        # Scroll
         await page.evaluate("window.scrollTo(0, document.body.scrollHeight / 2)")
         await asyncio.sleep(2)
-        await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-        await asyncio.sleep(2)
 
-        # Screenshot for debugging
-        SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
-        slug = hotel["url_path"].split("/")[-1]
-        ss_path = SCREENSHOT_DIR / f"{slug}_{apt_name}_{month_key}.png"
+        # Screenshot (always, even if no prices found)
         try:
             await page.screenshot(path=str(ss_path), full_page=True)
         except Exception:
             pass
 
-        # DOM price extraction
+        # DOM extraction
         dom_prices = await _extract_dom_prices(page)
-
         page.remove_listener("response", capture_response)
 
         # Combine and validate
         all_prices = api_prices + dom_prices
-
-        # Filter out promotional banner prices and duplicates
         valid = []
         seen = set()
         for p in all_prices:
             price = p["price"]
-            if price in (100, 50, 25, 200, 150):  # Common promo values
+            if price in (100, 50, 25, 200, 150):
                 continue
             if price < 100 or price > 20000:
                 continue
@@ -200,21 +237,15 @@ async def scrape_hotel(page, hotel, airport_id, duration):
                 seen.add(key)
                 valid.append(p)
 
-        # Check for "not available" on page
-        body_text = await page.text_content("body") or ""
-        body_lower = body_text.lower()
-        unavail_phrases = [
+        # Check availability
+        body_text = (await page.text_content("body") or "").lower()
+        unavail = any(p in body_text for p in [
             "no availability", "no holidays found", "currently unavailable",
-            "no results", "sorry, there are no", "no packages available",
-            "not available for this date"
-        ]
-        is_unavailable = any(phrase in body_lower for phrase in unavail_phrases)
+            "no results", "sorry, there are no", "not available"
+        ])
 
-        if valid and not is_unavailable:
-            all_month_data[month_key] = {
-                "month_label": month_label,
-                "rooms": {}
-            }
+        if valid and not unavail:
+            all_month_data[month_key] = {"month_label": month_label, "rooms": {}}
             for p in valid:
                 room = p.get("room", "Standard")
                 existing = all_month_data[month_key]["rooms"].get(room)
@@ -227,20 +258,18 @@ async def scrape_hotel(page, hotel, airport_id, duration):
                         "airport": apt_name,
                         "nights": duration,
                     }
-            room_count = len(all_month_data[month_key]["rooms"])
-            print(f"      ✓ {len(valid)} prices, {room_count} room types")
-        elif is_unavailable:
-            print(f"      — not available")
+            print(f"✓ {len(valid)} prices, {len(all_month_data[month_key]['rooms'])} rooms")
+        elif unavail:
+            print("— not available")
         else:
-            print(f"      — no prices found (check screenshot)")
+            print("— no prices found")
 
-        await asyncio.sleep(3)
+        await asyncio.sleep(4)
 
     return all_month_data
 
 
 def _extract_prices(obj, depth=0):
-    """Recursively find prices in API JSON responses."""
     if depth > 8 or not obj:
         return []
     found = []
@@ -260,16 +289,13 @@ def _extract_prices(obj, depth=0):
             entry = {"price": price, "date": "", "room": "Standard", "board": "Unknown"}
             for k in ["departureDate", "date", "outboundDate", "departDate"]:
                 if k in obj and obj[k]:
-                    entry["date"] = str(obj[k])[:10]
-                    break
+                    entry["date"] = str(obj[k])[:10]; break
             for k in ["roomType", "roomDescription", "roomName", "name"]:
                 if k in obj and isinstance(obj[k], str) and 3 < len(obj[k]) < 80:
-                    entry["room"] = obj[k].strip()
-                    break
+                    entry["room"] = obj[k].strip(); break
             for k in ["boardBasis", "mealPlan", "board", "boardType"]:
                 if k in obj and isinstance(obj[k], str):
-                    entry["board"] = obj[k].strip()
-                    break
+                    entry["board"] = obj[k].strip(); break
             found.append(entry)
         else:
             for v in obj.values():
@@ -281,85 +307,50 @@ def _extract_prices(obj, depth=0):
 
 
 async def _extract_dom_prices(page):
-    """Extract prices from visible page, excluding nav/header/footer."""
     results = []
     try:
-        # Target only main content area price elements
         price_els = await page.query_selector_all(
             ":is([class*='price'], [class*='Price'], [class*='cost'], "
             "[class*='amount'], [data-testid*='price'])"
-            ":not(nav *):not(header *):not(footer *):not([class*='banner'] *)"
-            ":not([class*='promo'] *):not([class*='save'] *)"
+            ":not(nav *):not(header *):not(footer *)"
+            ":not([class*='banner'] *):not([class*='promo'] *)"
         )
-
         for el in price_els:
             try:
                 text = await el.inner_text()
-                # Skip promotional text
-                if any(w in text.lower() for w in ["save", "off", "discount", "was "]):
+                if any(w in text.lower() for w in ["save", "off", "discount"]):
                     continue
-
                 for m in re.findall(r'£\s*([\d,]+(?:\.\d{2})?)', text):
                     price = float(m.replace(",", ""))
                     if price < 100 or price > 20000:
                         continue
-
                     room = "Standard"
                     board = "Unknown"
-                    date_str = ""
-
-                    # Get context from parent container
                     try:
                         ctx = await el.evaluate(
                             """el => {
                                 let p = el;
                                 for (let i = 0; i < 6 && p; i++) {
                                     p = p.parentElement;
-                                    if (p && p.className && (
-                                        /room|card|option|package|result|item/i.test(p.className)
-                                    )) return p.innerText;
+                                    if (p && p.className &&
+                                        /room|card|option|package|result|item/i.test(p.className))
+                                        return p.innerText;
                                 }
                                 return el.parentElement?.innerText || '';
                             }"""
                         )
-                        if ctx:
-                            rm = re.search(
-                                r'(Standard|Superior|Family|Suite|Sea View|'
-                                r'Deluxe|Premium|Junior Suite|Classic|Studio|'
-                                r'Double|Twin|Single|Economy|Garden View|Pool View)',
-                                ctx, re.I
-                            )
-                            if rm:
-                                room = rm.group(1).strip().title()
-                            bm = re.search(
-                                r'(Self Catering|B&B|Bed (?:&|and) Breakfast|'
-                                r'Half Board|Full Board|All Inclusive)',
-                                ctx, re.I
-                            )
-                            if bm:
-                                board = bm.group(1)
-                            dm = re.search(
-                                r'(\d{1,2})\s*(Jan|Feb|Mar|Apr|May|Jun|'
-                                r'Jul|Aug|Sep|Oct|Nov|Dec)\w*\s*(\d{4})',
-                                ctx, re.I
-                            )
-                            if dm:
-                                date_str = f"{dm.group(3)}-{dm.group(2)}-{dm.group(1)}"
+                        rm = re.search(r'(Standard|Superior|Family|Suite|Sea View|Deluxe|Premium|Double|Twin)', ctx, re.I)
+                        if rm: room = rm.group(1).title()
+                        bm = re.search(r'(Self Catering|Bed (?:&|and) Breakfast|Half Board|Full Board|All Inclusive)', ctx, re.I)
+                        if bm: board = bm.group(1)
                     except Exception:
                         pass
-
-                    results.append({
-                        "price": price,
-                        "room": room,
-                        "board": board,
-                        "date": date_str,
-                    })
+                    results.append({"price": price, "room": room, "board": board, "date": ""})
             except Exception:
                 continue
 
-        # Fallback: broader search in main content
         if not results:
-            for sel in ["main", "#main", "[role='main']", "[class*='content']"]:
+            for sel in ["main", "[role='main']", "[class*='content']"]:
                 try:
                     el = await page.query_selector(sel)
                     if el:
@@ -368,14 +359,11 @@ async def _extract_dom_prices(page):
                             price = float(m.replace(",", ""))
                             if 100 < price < 20000:
                                 results.append({"price": price, "room": "Standard", "board": "Unknown", "date": ""})
-                        if results:
-                            break
+                        if results: break
                 except Exception:
                     continue
-
     except Exception as e:
-        print(f"      [DOM error: {e}]")
-
+        print(f"[DOM: {e}] ", end="")
     return results
 
 
@@ -383,25 +371,26 @@ async def main():
     from playwright.async_api import async_playwright
 
     print(f"\n{'='*60}")
-    print(f"JET2 SCRAPER v4 — {datetime.now().strftime('%Y-%m-%d %H:%M')}")
-    print(f"Hotels: {len(TRACKED_HOTELS)}")
-    print(f"URL format: /beach/...?duration=X&occupancy=r2c&airport=N&date=dd-mm-yyyy")
+    print(f"JET2 SCRAPER v5 — {datetime.now().strftime('%Y-%m-%d %H:%M')}")
     print(f"{'='*60}")
 
     all_hotels = {}
     total_prices = 0
 
     async with async_playwright() as p:
+        # Launch with HTTP/2 disabled to avoid ERR_HTTP2_PROTOCOL_ERROR
         browser = await p.chromium.launch(
             headless=True,
             args=[
                 "--disable-blink-features=AutomationControlled",
                 "--no-sandbox",
                 "--disable-dev-shm-usage",
+                "--disable-http2",          # Force HTTP/1.1
+                "--disable-features=IsolateOrigins,site-per-process",
             ],
         )
         context = await browser.new_context(
-            viewport={"width": 1920, "height": 1080},
+            viewport={"width": 1366, "height": 768},
             user_agent=(
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -409,8 +398,52 @@ async def main():
             ),
             locale="en-GB",
             timezone_id="Europe/London",
+            java_script_enabled=True,
+            # Add realistic browser headers
+            extra_http_headers={
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+                "Accept-Language": "en-GB,en;q=0.9",
+                "Accept-Encoding": "gzip, deflate, br",
+                "DNT": "1",
+                "Connection": "keep-alive",
+                "Upgrade-Insecure-Requests": "1",
+                "Sec-Fetch-Dest": "document",
+                "Sec-Fetch-Mode": "navigate",
+                "Sec-Fetch-Site": "none",
+                "Sec-Fetch-User": "?1",
+                "Cache-Control": "max-age=0",
+            },
         )
+
         page = await context.new_page()
+
+        # Apply stealth to avoid bot detection
+        await stealth_async(page)
+
+        # First, visit the homepage to establish cookies/session
+        print("\nEstablishing session via homepage...")
+        try:
+            await page.goto("https://www.jet2holidays.com/", wait_until="domcontentloaded", timeout=30000)
+            await asyncio.sleep(3)
+            # Accept cookies
+            for sel in ["#onetrust-accept-btn-handler", "button:has-text('Accept')"]:
+                try:
+                    btn = page.locator(sel)
+                    if await btn.count() > 0:
+                        await btn.first.click(timeout=3000)
+                        await asyncio.sleep(1)
+                        break
+                except Exception:
+                    pass
+            print("✓ Homepage loaded, cookies set")
+
+            # Take a homepage screenshot for reference
+            SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
+            await page.screenshot(path=str(SCREENSHOT_DIR / "00_homepage.png"))
+        except Exception as e:
+            print(f"✗ Homepage failed: {e}")
+
+        await asyncio.sleep(2)
 
         for hotel in TRACKED_HOTELS:
             for apt_id in hotel["airport_ids"]:
@@ -438,16 +471,16 @@ async def main():
                                     "month_label": md["month_label"],
                                     "rooms": md["rooms"],
                                 })
-                                for room_name in md["rooms"]:
-                                    all_hotels[key]["room_types"].add(room_name)
+                                for rn in md["rooms"]:
+                                    all_hotels[key]["room_types"].add(rn)
                                     total_prices += 1
                     except Exception as e:
                         print(f"  ✗ Error: {e}")
-                    await asyncio.sleep(2)
+                    await asyncio.sleep(3)
 
         await browser.close()
 
-    # Build output
+    # Output
     hotel_list = []
     for h in all_hotels.values():
         h["room_types"] = sorted(h["room_types"])
@@ -464,13 +497,13 @@ async def main():
         json.dump(output, f, indent=2)
 
     print(f"\n{'='*60}")
-    print(f"RESULTS:")
+    print("RESULTS:")
     for h in hotel_list:
         print(f"  {h['name']}: {len(h['months'])} months, rooms: {', '.join(h['room_types']) or 'none'}")
-    print(f"\nTotal: {total_prices} price points across {len(hotel_list)} hotels")
+    if not hotel_list:
+        print("  ⚠ No prices found — check screenshots for what the browser sees")
+    print(f"\nTotal: {total_prices} prices across {len(hotel_list)} hotels")
     print(f"Output: {OUTPUT_PATH}")
-    if SCREENSHOT_DIR.exists():
-        print(f"Screenshots: {len(list(SCREENSHOT_DIR.glob('*.png')))} saved")
     print(f"{'='*60}\n")
 
 
